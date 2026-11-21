@@ -158,6 +158,16 @@ pub enum Action {
     /// from being passed to whatever is underneath.
     DisableMousePassthrough(Id),
 
+    /// Lock the cursor of the window, and tell whether it locked.
+    ///
+    /// The cursor stays put, or where the platform cannot hold it still,
+    /// stays inside the window; the window hears
+    /// [`mouse::Event::RawMotion`](crate::core::mouse::Event::RawMotion).
+    LockCursor(Id, oneshot::Sender<bool>),
+
+    /// Release the cursor of the window locked by [`Action::LockCursor`].
+    UnlockCursor(Id),
+
     /// Set the minimum inner window size.
     SetMinSize(Id, Option<Size>),
 
@@ -462,6 +472,23 @@ pub fn enable_mouse_passthrough<Message>(id: Id) -> Task<Message> {
 /// from being passed to whatever is underneath.
 pub fn disable_mouse_passthrough<Message>(id: Id) -> Task<Message> {
     task::effect(crate::Action::Window(Action::DisableMousePassthrough(id)))
+}
+
+/// Locks the cursor of the window, as a game does to turn by the mouse, and
+/// yields whether it locked.
+///
+/// While locked, the cursor stays put (or, where the platform cannot hold
+/// it still, stays inside the window) and the window hears
+/// [`mouse::Event::RawMotion`](crate::core::mouse::Event::RawMotion).
+/// Hiding the cursor is up to the widget under it
+/// ([`mouse::Interaction::Hidden`](crate::core::mouse::Interaction::Hidden)).
+pub fn lock_cursor(id: Id) -> Task<bool> {
+    task::oneshot(|channel| crate::Action::Window(Action::LockCursor(id, channel)))
+}
+
+/// Releases the cursor of the window locked by [`lock_cursor`].
+pub fn unlock_cursor<Message>(id: Id) -> Task<Message> {
+    task::effect(crate::Action::Window(Action::UnlockCursor(id)))
 }
 
 /// Gets the logical dimensions of the monitor containing the window with the given [`Id`].

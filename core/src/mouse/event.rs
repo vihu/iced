@@ -1,4 +1,4 @@
-use crate::Point;
+use crate::{Point, Vector};
 
 use super::Button;
 
@@ -20,6 +20,16 @@ pub enum Event {
     CursorMoved {
         /// The new position of the mouse cursor
         position: Point,
+    },
+
+    /// The mouse moved while the window held its cursor locked.
+    ///
+    /// A locked cursor stays put, so this is the device's own motion, for a
+    /// game to turn by. Only a window that locked its cursor with
+    /// `window::lock_cursor` hears it.
+    RawMotion {
+        /// How far the mouse moved, in the device's units.
+        delta: Vector,
     },
 
     /// A mouse button was pressed.

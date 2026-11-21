@@ -44,7 +44,7 @@ use crate::core::shell;
 use crate::core::theme;
 use crate::core::time::{Duration, Instant};
 use crate::core::widget::operation::{self, Operation};
-use crate::core::{Point, Renderer, Size};
+use crate::core::{Point, Renderer, Size, Vector};
 use crate::futures::futures::channel::mpsc;
 use crate::futures::futures::channel::oneshot;
 use crate::futures::futures::task;
@@ -253,6 +253,21 @@ where
                 event_loop,
                 Event::EventLoopAwakened(winit::event::Event::AboutToWait),
             );
+        }
+
+        fn device_event(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+            device_id: winit::event::DeviceId,
+            event: winit::event::DeviceEvent,
+        ) {
+            // Only raw motion, for a window that locked its cursor.
+            if matches!(event, winit::event::DeviceEvent::MouseMotion { .. }) {
+                self.process_event(
+                    event_loop,
+                    Event::EventLoopAwakened(winit::event::Event::DeviceEvent { device_id, event }),
+                );
+            }
         }
     }
 
@@ -1212,6 +1227,21 @@ async fn run_instance<P>(
                                 control_sender.start_send(Control::ChangeFlow(ControlFlow::Wait));
                         }
                     }
+                    event::Event::DeviceEvent {
+                        event: winit::event::DeviceEvent::MouseMotion { delta: (x, y) },
+                        ..
+                    } => {
+                        for (id, window) in window_manager.iter_mut() {
+                            if window.cursor_locked {
+                                events.push((
+                                    id,
+                                    core::Event::Mouse(mouse::Event::RawMotion {
+                                        delta: Vector::new(x as f32, y as f32),
+                                    }),
+                                ));
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1593,6 +1623,33 @@ fn run_action<'a, P, C>(
             window::Action::DisableMousePassthrough(id) => {
                 if let Some(window) = window_manager.get_mut(id) {
                     let _ = window.raw.set_cursor_hittest(true);
+                }
+            }
+            window::Action::LockCursor(id, channel) => {
+                if let Some(window) = window_manager.get_mut(id) {
+                    // Locked where the platform can hold the cursor still
+                    // (Wayland, macOS), else confined (X11, Windows): raw
+                    // motion arrives either way.
+                    let locked = window
+                        .raw
+                        .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+                        .or_else(|_| {
+                            window
+                                .raw
+                                .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                        })
+                        .is_ok();
+
+                    window.cursor_locked = locked;
+                    let _ = channel.send(locked);
+                }
+            }
+            window::Action::UnlockCursor(id) => {
+                if let Some(window) = window_manager.get_mut(id) {
+                    let _ = window
+                        .raw
+                        .set_cursor_grab(winit::window::CursorGrabMode::None);
+                    window.cursor_locked = false;
                 }
             }
             window::Action::GetMonitorSize(id, channel) => {
